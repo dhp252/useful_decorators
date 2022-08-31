@@ -362,6 +362,58 @@ def memorize():
     pass
 
 
+def reduce_query(file_path=None, always_query=False):
+    """A decorator to reduce the number of query by store in file and in memory if they are up-to-date
+    Args:
+        - file_path: str
+            path to store temporary file
+        - always_query: bool
+            if true, ignore all other stuff and always execute the query
+    NOTE: The decorated function must return a pandas.DataFrame
+
+    Example:
+    >>> @reduce_query("")
+    >>> def query_sth():
+    >>>     return df
+    """
+    def inner(func):
+        df      = None
+        df_date = None
+
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            nonlocal file_path
+            nonlocal df
+            nonlocal df_date
+            nonlocal always_query
+
+            if always_query:
+                return func(*args, **kwargs)
+
+            try:
+                file_date = os.path.getmtime(file_path)
+                file_date = datetime.datetime.fromtimestamp(file_date).date()       
+            except FileNotFoundError:
+                file_date = None
+
+            is_file_up_to_date = file_date == datetime.datetime.now().date()
+            is_mem_up_to_date  = df_date   == datetime.datetime.now().date()
+
+            if is_mem_up_to_date:
+                if not is_file_up_to_date:
+                    df.to_csv(file_path, index=False)
+            elif is_file_up_to_date:
+                df = pd.read_csv(file_path)
+                df_date = file_date
+            else:
+                df = func(*args, **kwargs)
+                df.to_csv(file_path, index=False)
+                df_date = datetime.datetime.now().date()
+            return df
+        return wrapper
+    return inner
+
+
 def override_args(*override_args, **override_kwargs):
     """Override default keyword arguments of the function
     """
